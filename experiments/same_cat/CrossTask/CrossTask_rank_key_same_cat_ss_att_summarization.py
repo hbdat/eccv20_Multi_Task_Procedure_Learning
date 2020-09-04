@@ -1,0 +1,290 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Oct  1 12:34:54 2019
+
+@author: Warmachine
+"""
+
+from __future__ import print_function, division
+import os,sys
+pwd = os.getcwd()
+sys.path.insert(0,pwd)
+#%%
+print('-'*30)
+print(os.getcwd())
+print('-'*30)
+#%%
+import scipy.io as sio
+import os
+import torch
+from torch import nn
+from torch.nn import functional as F
+import pandas as pd
+from PIL import Image
+from skimage import io, transform
+import numpy as np
+from collections import Counter
+import matplotlib.pyplot as plt
+from torch.utils.data import Dataset, DataLoader
+import torch.optim as optim 
+from torchvision import transforms, utils, models
+import h5py
+import time
+import pdb
+import pickle
+
+from core.FeatureVGGDataset_CrossTask import FeatureVGGDataset_CrossTask
+from core.attention_based_summarization import AttentionSummarization
+
+from core.self_supervision_summarization import SelfSupervisionSummarization
+
+from core.helper import aggregated_keysteps,fcsn_preprocess_keystep,\
+                        get_parameters,get_weight_decay,evaluation_align,\
+                        visualize_attention,Logger
+                        
+from global_setting import NFS_path,data_path_tr_CrossTask,data_path_tst_CrossTask
+# Ignore warnings
+#import warnings
+#warnings.filterwarnings("ignore")
+#%%
+print('Folder {}'.format(sys.argv[1]))
+#%%
+plt.ion()   # interactive mode
+#%% use GPU
+M = 30
+repNum = int(sys.argv[4])
+target_cat_idx = int(sys.argv[2])
+#%%
+idx_GPU = sys.argv[3]
+device = torch.device("cuda:{}".format(idx_GPU) if torch.cuda.is_available() else "cpu")
+#%% hyper-params
+
+batch_size = 1
+target_fps = 2
+
+verbose = False
+n_video_iters = 1
+n_class = M
+num_worker = 5
+#number_eval = 5
+is_save = True
+n_epoches = 5
+is_balance = True
+#%%
+if is_save:
+    print("Save")
+    print("!"*30)
+#%%
+list_cat = os.listdir(data_path_tr_CrossTask)
+cat_name = list_cat[target_cat_idx]
+#%%
+feature_dataset_all = FeatureVGGDataset_CrossTask(data_path_tr_CrossTask,verbose = verbose,is_visualize=False,target_cat=cat_name, is_all = True)
+dataset_loader_all = DataLoader(feature_dataset_all,
+                            batch_size = batch_size,
+                            shuffle = False,
+                            num_workers = num_worker)
+
+feature_dataset_vis = FeatureVGGDataset_CrossTask(data_path_tr_CrossTask, verbose = verbose,is_visualize=True,target_cat=cat_name, is_all = True)
+dataset_loader_vis = DataLoader(feature_dataset_vis,
+                            batch_size = batch_size,
+                            shuffle = False,
+                            num_workers = 0)
+
+n_category = len(feature_dataset_all.cat2idx)
+n_train = feature_dataset_all.n_video
+print('Training set size: {}'.format(n_train))
+#%%
+n_keysteps = feature_dataset_all.dict_n_keystep[cat_name]
+n_class = n_keysteps+1
+#%%
+experiment_dir = NFS_path+'results/'+sys.argv[1]+'/rank_key_same_cat_ss_target_cat_{}_K_{}_GPU_{}_time_{}/'.format(cat_name,repNum,idx_GPU,str(time.time()).replace('.','d'))
+
+try:
+    similar_folder = [f for f in os.listdir(NFS_path+'results/'+sys.argv[1]) if "rank_key_same_cat_ss_target_cat_{}_K_{}".format(cat_name,repNum) in f]
+except:
+    similar_folder = []
+
+if len(similar_folder) > 0:
+    print("Experiment existed {}".format(similar_folder))
+    sys.exit()
+
+if is_save:
+    os.makedirs(experiment_dir)
+    orig_stdout = sys.stdout
+    f = open(experiment_dir+'specs.txt', 'w')
+    sys.stdout = f
+    
+assert M >= n_class    
+if is_save:
+    with open(experiment_dir+'log.txt', 'a') as file:
+        file.write("n_keystep: {}\n".format(n_keysteps))
+#%%
+lambda_1 = 0.0
+model = AttentionSummarization(M,n_category,lambda_1,dim_input = 512,verbose=verbose,temporal_att=True,is_balance=is_balance)
+
+assert model.lambda_1 == 0
+
+model.to(device)
+print('fcsn_params')
+att_params = model.att_params
+fcsn_params = model.fcsn_params
+#%%
+ss_model = SelfSupervisionSummarization(M = M,repNum=repNum)
+#%%
+lr = 0.001
+weight_decay = 0.0001
+momentum = 0.0
+params = [{'params':att_params,'lr':lr,'weight_decay':weight_decay},
+          {'params':fcsn_params,'lr':lr,'weight_decay':weight_decay}]
+#optimizer = optim.Adam(params)
+optimizer  = optim.RMSprop( params ,lr=lr,weight_decay=weight_decay, momentum=momentum)
+#%%
+print('-'*30)
+print('rank loss for keystep')
+print('pos_weight')
+print('-'*30)
+print('GPU {}'.format(idx_GPU))
+print('lambda_1 {}'.format(lambda_1))
+print('lr {} weight_decay {} momentum {}'.format(lr,weight_decay,momentum))
+print('target_fps {}'.format(target_fps))
+print('n_video_iters {}'.format(n_video_iters))
+print('num_worker {}'.format(num_worker))
+print('n_epoches {}'.format(n_epoches))
+print('repNum {}'.format(repNum))
+print('is_balance {}'.format(is_balance))
+#input('confirm?')
+#%%
+if is_save:
+    train_logger=Logger(experiment_dir+'train.csv',['loss','loss_cat','loss_key','pos_weight'])
+    all_logger=Logger(experiment_dir+'all.csv',['cat_F1_pred_or','cat_F1_pseudo_ks'])
+#%%
+if is_save:
+    sys.stdout = orig_stdout
+    f.close()
+#%%
+list_F1_pseudo = []
+list_F1_pred = []
+#%%
+def measurement():
+    
+    prefix = 'all_'
+        
+    out_package = evaluation_align(model,ss_model,dataset_loader_all,device)
+    
+    R_pred, P_pred = out_package['R_pred'],out_package['P_pred']
+    R_pseudo, P_pseudo = out_package['R_pseudo'],out_package['P_pseudo']
+    
+    if is_save:
+        with open(experiment_dir+prefix+'log.txt', 'a') as file:
+            file.write("R_pred {} P_pred {}\n".format(R_pred,P_pred))
+            file.write("R_pseudo {} P_pseudo {}\n".format(R_pseudo,P_pseudo))
+            
+            file.write("-"*30)
+            file.write("\n")
+#%%
+for i_epoch in range(n_epoches):
+    #1st pass
+    counter = 0
+    with torch.no_grad():
+        for _,data_package in enumerate(dataset_loader_all):
+            counter += 1
+            model.eval()
+            
+            cat_labels, cat_names, video, subsampled_feature, subsampled_segment_list, key_step_list, n_og_keysteps \
+            = data_package['cat_labels'],data_package['cat_names'],data_package['video'],data_package['subsampled_feature'],data_package['subsampled_segment_list'],data_package['key_step_list'],data_package['n_og_keysteps']
+            
+            # flatten the feature vector: [512,7,7] -> [512,49]
+            flatten_feature = subsampled_feature.view(batch_size,-1,512,7*7).to(device)
+#            print("Flatten tensor shape:", flatten_feature.shape)
+        
+            #Transposing the flattened features
+            flatten_feature = torch.transpose(flatten_feature, dim0 = 2, dim1 = 3)
+#            print("Transposed Flatten tensor shape:", flatten_feature.shape)
+            print(counter,cat_names, video)
+            
+            keystep_labels = aggregated_keysteps(subsampled_segment_list, key_step_list)
+            keystep_labels = fcsn_preprocess_keystep(keystep_labels,verbose = verbose)
+            
+            fbar_seg = model.forward_middle(flatten_feature,subsampled_segment_list)        #[1,512,T]
+            ss_model.add_video(fbar_seg,video)                                              #[T,512]
+            
+    
+    print('-'*30)
+    print('subset selection')
+    ss_model.foward()
+    print('-'*30)
+    
+    measurement()
+    torch.save(model.state_dict(), experiment_dir+'model_ES_pred_or_{}'.format(all_logger.get_len()-1))
+    pickle.dump(ss_model,open(experiment_dir+'SS_model_ES_pred_or_{}'.format(all_logger.get_len()-1),'wb'))
+    
+    print('unique assignment {} number of represent {} number cluster {}'.format(np.unique(ss_model.reps).shape,np.unique(ss_model.assignments).shape,ss_model.kmeans.cluster_centers_.shape))
+    if is_save:
+        with open(experiment_dir+'log.txt', 'a') as file:
+                file.write('unique assignment {} number of represent {} number cluster {}\n'.format(np.unique(ss_model.reps).shape,np.unique(ss_model.assignments).shape,ss_model.kmeans.cluster_centers_.shape))
+    
+    #2nd pass
+    counter = 0
+    for data_package in dataset_loader_all:
+        counter += 1
+        model.train()
+        optimizer.zero_grad()
+        
+        cat_labels, cat_names, video, subsampled_feature, subsampled_segment_list, key_step_list, n_og_keysteps \
+        = data_package['cat_labels'],data_package['cat_names'],data_package['video'],data_package['subsampled_feature'],data_package['subsampled_segment_list'],data_package['key_step_list'],data_package['n_og_keysteps']
+        
+        
+        # flatten the feature vector: [1,T,512,7,7] -> [1,T,512,49]
+        flatten_feature = subsampled_feature.view(batch_size,-1,512,7*7).to(device)
+#        print("Flatten tensor shape:", flatten_feature.shape)
+    
+        #Transposing the flattened features 
+        flatten_feature = torch.transpose(flatten_feature, dim0 = 2, dim1 = 3)          #[1,T,49,512] <== [1,T,512,49]
+        
+#        print("Transposed Flatten tensor shape:", flatten_feature.shape)
+        print(counter,cat_names, video)
+        
+        
+        keystep_labels = aggregated_keysteps(subsampled_segment_list, key_step_list)
+        keystep_labels = fcsn_preprocess_keystep(keystep_labels,verbose = verbose)
+    
+        
+        keysteps,cats,_,_ = model(flatten_feature,subsampled_segment_list)
+        
+        keystep_pseudo_labels = ss_model.get_key_step_label(video)
+        
+        
+#        package = model.compute_loss_rank_keystep_cat(keysteps,cats,keystep_labels,cat_labels)
+        
+        package = model.compute_loss_rank_keystep_cat(keysteps,cats,keystep_pseudo_labels,cat_labels)
+        
+        loss,loss_cat,loss_key,class_weights = package['loss'],package['loss_cat'],package['loss_keystep'],package['class_weights']
+        
+        train_stats = [loss.item(),loss_cat.item(),loss_key.item(),class_weights.cpu().numpy()]
+        print('loss {} loss_cat {} loss_key {} pos_weight {}'.format(*train_stats))
+        print('weight_decay {}'.format(get_weight_decay(optimizer)))
+        if is_save:
+            train_logger.add(train_stats)
+            train_logger.save()
+        loss.backward()
+        optimizer.step()
+        
+        print('-'*30)
+    
+    print("train Pseudo {} Pred {}".format(np.mean(list_F1_pseudo),np.mean(list_F1_pred)))
+    
+    ss_model.flush()
+    
+    if is_save and all_logger.is_max('cat_F1_pred_or'):
+        torch.save(model.state_dict(), experiment_dir+'model_ES_pred_or')
+        pickle.dump(ss_model,open(experiment_dir+'SS_model_ES_pred_or','wb'))
+    
+    if is_save and all_logger.is_max('cat_F1_pseudo_ks'):
+        torch.save(model.state_dict(), experiment_dir+'model_ES_pseudo_ks')
+        pickle.dump(ss_model,open(experiment_dir+'SS_model_ES_pred_ks','wb'))
+#%%
+measurement()
+#%%
+torch.save(model.state_dict(), experiment_dir+'model_final')
+pickle.dump(ss_model,open(experiment_dir+'SS_model_final','wb'))
+#%%
