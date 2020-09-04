@@ -31,7 +31,7 @@ python ./extract_data/extract_feature_cats_CrossTask_subsample.py
 * We use the original training/testing split from CrossTask dataset
 
 ### ProceL
-1) Please download and extract the annotations and video links of ProceL to `./data/ProceL` via  https://drive.google.com/file/d/1fmf1NZk1XtxM9CkqKCR859xWz7qgpUrD/view
+1) Please download and extract the annotations and video links of ProceL to `./data/ProceL` via  https://drive.google.com/file/d/1b8PoZlYeNMP3PieJ3_80KkeibaCmmljS/view?usp=sharing
 
 2) To crawl videos in ProceL from YouTube, please run:
 ```
