@@ -34,3 +34,5 @@ mat_path = docker_path+'datasets/ProceL/anno/'
 data_path_tr_CrossTask = docker_path+'/datasets/CrossTask/features/training_data/'
 data_path_tst_CrossTask = docker_path+'/datasets/CrossTask/features/testing_data/'
 
+## Add path to raw data if you are visualizing the data
+raw_data_dir = None
