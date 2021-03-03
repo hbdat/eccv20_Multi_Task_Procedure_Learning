@@ -9,7 +9,7 @@ import numpy as np
 import time
 import pdb
 from core.ProceLDataset import ProceLDataset
-from global_setting import raw_data_dir,data_path_tr,data_path_tst
+from global_setting import data_path_tr,data_path_tst
 
 class FeatureVGGDataset(Dataset):
     """Feature VGG Dataset."""
@@ -38,7 +38,9 @@ class FeatureVGGDataset(Dataset):
         input_size = 224
         
         ### for visualization ###
-        self.raw_data_dir = raw_data_dir#'/mnt/raptor/datasets/ProceL_Dat/'
+        if self.is_visualize:
+            from global_setting import raw_data_dir
+            self.raw_data_dir = raw_data_dir#'/mnt/raptor/datasets/ProceL_Dat/'
         
         self.transforms = transforms.Compose([
             transforms.Resize(input_size),
