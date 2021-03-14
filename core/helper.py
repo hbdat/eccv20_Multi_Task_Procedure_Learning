@@ -6,8 +6,6 @@ from sklearn.metrics import f1_score,precision_score,recall_score
 import skimage.transform
 import matplotlib.pyplot as plt
 import pandas as pd
-from core.alignment import compute_align_F1
-from core.alignment_Alyrac import compute_align_F1_Alyrac, compute_align_F1_Alyrac_no_align
 from core.frame_base_measurement import compute_align_MoF_UoI,compute_align_MoF_UoI_bg, compute_align_MoF_UoI_no_align, compute_align_MoF_UoI_bg_no_align 
 import pdb
 import os

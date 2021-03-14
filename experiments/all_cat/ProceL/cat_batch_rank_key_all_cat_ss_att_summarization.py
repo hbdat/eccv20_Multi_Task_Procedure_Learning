@@ -175,9 +175,6 @@ if is_save:
     sys.stdout = orig_stdout
     f.close()
 #%%
-list_F1_pseudo = []
-list_F1_pred = []
-#%%
 def measurement(is_test=True):
     eps = 1e-8
     
@@ -365,27 +362,6 @@ for i_epoch in range(n_epoches):
                 
             n_keystep_background = n_og_keysteps.item()+1
             
-            if is_ss:
-                P_pseudo,R_pseudo,F1_pseudo = compute_align_F1(keystep_pred=keystep_pseudo_labels,keystep_gt=keystep_labels,n_keystep=n_keystep_background,M=M,per_keystep=per_keystep)
-            else:
-                P_pseudo,R_pseudo,F1_pseudo = [-1,-1,-1]
-            
-            keysteps_pred = torch.argmax(keysteps,dim = 1)
-            P_pred,R_pred,F1_pred = compute_align_F1(keystep_pred=keysteps_pred,keystep_gt=keystep_labels,n_keystep=n_keystep_background,M=M,per_keystep=per_keystep)
-            
-            if F1_pred == 0 or F1_pseudo == 0:
-                pdb.set_trace()
-            
-            print('Pseudo: ',P_pseudo,R_pseudo,F1_pseudo)
-            print('Pred: ',P_pred,R_pred,F1_pred)
-            
-            list_F1_pseudo.append(F1_pseudo)
-            list_F1_pred.append(F1_pred)
-            
-            print('-'*30)
-        
-        print("train Pseudo {} Pred {}".format(np.mean(list_F1_pseudo),np.mean(list_F1_pred)))
-        
         
         if is_save:
             with open(experiment_dir+'log.txt', 'a') as file:
