@@ -264,11 +264,11 @@ def evaluation_align(model,ss_model,dataset_loader_tst,device):
     out_package['list_top_k_acc'] = list_top_k_acc
     out_package['per_class_acc'] = per_class_acc
     
-    out_package['R_pred'] = IoU_pred
-    out_package['P_pred'] = P_pred
+    out_package['R_pred'] = MoF_pred
+    out_package['P_pred'] = MoF_pred_bg
     
-    out_package['R_pseudo'] = IoU_pseudo
-    out_package['P_pseudo'] = P_pseudo
+    out_package['R_pseudo'] = MoF_pseudo
+    out_package['P_pseudo'] = MoF_pseudo_bg
     
     return out_package
 
