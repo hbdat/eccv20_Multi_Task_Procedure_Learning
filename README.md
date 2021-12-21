@@ -74,6 +74,15 @@ chmod +x ./chain_experiment_script/ProceL/all_cat_experiments.sh
 ./chain_experiment_script/ProceL/all_cat_experiments.sh
 ```
 
+## Pretrained Models
+For ease of reproducing the results, we provided the pretrained models for:
+Dataset | Setting | Model
+--- |:---:|:---:
+CrossTask | K=15 (Teacher model) | [download](https://drive.google.com/file/d/1KOSNy2XuxbbtmJBOwvg3Wkn8sJamTSEh/view?usp=sharing)
+CrossTask | K=15 (Student model) | [download](https://drive.google.com/file/d/1Z1CLAbs8ymUtTxSNSzgMAe34unMMijo6/view?usp=sharing)
+Procel | K=15 (Teacher model) | [download](https://drive.google.com/file/d/1FD4zjin3MmiRSTCiug8kTo2UI6wo87kM/view?usp=sharing)
+Procel | K=15 (Student model) | [download](https://drive.google.com/file/d/1uNOHeoqBkpM_geyEmqpp1x3DVuNFgJT8/view?usp=sharing)
+
 ---
 ## Citation
 If this code is helpful for your research, we would appreciate if you cite the work:
